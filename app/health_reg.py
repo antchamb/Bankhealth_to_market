@@ -112,7 +112,7 @@ mom = (mom_raw
 # qret = (qret.merge(size, on=['PERMNO', 'date'])
 #             .merge(mom,  on=['PERMNO', 'date']))
 
-# # --- 4. Δ BankHealth (surprise) ---------------------------------------
+# # --- 4. Δ BankHealth (surprise) ---------------------------------
 sys_health_q = sys_health_q.asfreq('QE-DEC')              # ensure quarterly index
 sys_health_q['d_bh'] = sys_health_q['bank_health'].diff()
 
@@ -122,7 +122,7 @@ sys_health_q['d_bh'] = sys_health_q['bank_health'].diff()
 # df['d_bh_lag1'] = df.groupby('PERMNO')['d_bh'].shift(1)
 # df = df.dropna(subset=['d_bh_lag1'])
 
-# # --- 5. Fixed-effects panel ------------------------------------------
+# # --- 5. Fixed-effects panel -------------------------------------
 # from linearmodels.panel import PanelOLS
 # import statsmodels.api as sm
 
@@ -189,8 +189,46 @@ print(res.summary)
 
 import matplotlib.pyplot as plt
 
+
+coef = res.params.to_frame('coef')
+ci   = res.conf_int()
+coef[['ci_low','ci_high']] = ci
+print(coef.round(4))
+
 fig, ax = plt.subplots()
 sys_health_q['bank_health'].plot(ax=ax, marker='o')
-ax.axhline(0, color='k', lw=.5)
-ax.set(title='Systemic Bank-Health Index, 2010-2019',
+ax.axhline(0, lw=.8)
+ax.set(title='Systemic Bank-Health Index (2010-2019)',
        ylabel='Asset-weighted z-score')
+plt.tight_layout()
+plt.show()
+
+import matplotlib.pyplot as plt
+
+fig, ax = plt.subplots()
+coef.reset_index(inplace=True)
+ax.errorbar(coef['index'], coef['coef'],
+            yerr=[coef['coef']-coef['ci_low'],
+                  coef['ci_high']-coef['coef']],
+            fmt='o', capsize=4)
+ax.set_xticklabels(coef['index'], rotation=45, ha='right')
+ax.set(title='Estimated coefficients with 95% CI', ylabel='β')
+plt.tight_layout()
+plt.show()
+
+
+df['size_q'] = pd.qcut(df['size_lag'], 4, labels=False)+1
+g = df.groupby('size_q')
+betas = []
+for q, sub in g:
+    y = sub.set_index(['PERMNO','date'])['ret_q']
+    x = sm.add_constant(sub.set_index(['PERMNO','date'])
+                        [['d_bh_lag1']])
+    b = PanelOLS(y, x, entity_effects=True).fit()
+    betas.append(b.params['d_bh_lag1'])
+plt.plot([1,2,3,4], betas, marker='o')
+plt.title('β(d_bh_lag1) across size quartiles')
+plt.xlabel('Size quartile (1=small)')
+plt.ylabel('Coefficient')
+plt.tight_layout()
+plt.show()
