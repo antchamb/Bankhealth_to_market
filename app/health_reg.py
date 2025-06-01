@@ -116,23 +116,6 @@ mom = (mom_raw
 sys_health_q = sys_health_q.asfreq('QE-DEC')              # ensure quarterly index
 sys_health_q['d_bh'] = sys_health_q['bank_health'].diff()
 
-# df = (qret.merge(sys_health_q[['d_bh']], on='date', how='inner')
-#           .dropna(subset=['d_bh', 'ret_q', 'size_lag', 'mom_12_1']))
-
-# df['d_bh_lag1'] = df.groupby('PERMNO')['d_bh'].shift(1)
-# df = df.dropna(subset=['d_bh_lag1'])
-
-# # --- 5. Fixed-effects panel -------------------------------------
-# from linearmodels.panel import PanelOLS
-# import statsmodels.api as sm
-
-# df = df.set_index(['PERMNO', 'date'])
-# Y  = df['ret_q']
-# X  = sm.add_constant(df[['d_bh_lag1', 'size_lag', 'mom_12_1']])
-
-# mod = PanelOLS(Y, X, entity_effects=True)
-# res = mod.fit(cov_type='clustered', cluster_entity=True, cluster_time=True)
-# print(res.summary)
 # --- after building size_lag -------------------------------------
 qret = qret.merge(size, on=['PERMNO','date'])
 
@@ -232,3 +215,9 @@ plt.xlabel('Size quartile (1=small)')
 plt.ylabel('Coefficient')
 plt.tight_layout()
 plt.show()
+
+
+snp_df['sic4'] = snp_df['SICCD'].astype(str).str.zfill(4)
+snp_df['sector10'] = snp_df['sic4'].str[0]
+snp_df['sector10'] = snp_df['sector10'].astype('category')
+# snp_df['small'] = (snp_df.groupby('date')['size_lag'])
