@@ -158,6 +158,8 @@ res3 = mod3.fit(cov_type='driscoll-kraay',
 
 print(res3.summary)
 
+
+# GRAPHES
 import numpy as np
 
 # Verify parameter names
@@ -172,3 +174,108 @@ for i, var in enumerate(sector_dummies):
 # Perform the Wald test
 f_test = res3.wald_test(restriction_matrix)
 print("\nTest conjoint H2: Statistic =", f_test.stat, ", P-value =", f_test.pval)
+
+# for H3 cross
+base['size_c'] = base['size_lag'] - base['size_lag'].mean()
+base['d_bh_size_c'] = base['d_bh_lag1'] * base['size_c']
+x_h3 = ['d_bh_lag1',          # effet moyen (pour taille moyenne)
+        'd_bh_size_c',          # variation de l’effet selon la taille
+        'Mkt-RF','SMB','HML','MOM','size_c']   # facteurs + taille centrée
+
+y_h3 = base.set_index(['PERMNO','date'])['rx_q']
+X_h3 = sm.add_constant(base.set_index(['PERMNO','date'])[x_h3])
+
+# FE + Driscoll–Kraay
+res_h3 = (PanelOLS(y_h3, X_h3, entity_effects=True, drop_absorbed=True)
+            .fit(cov_type='driscoll-kraay',
+                 kernel='bartlett', bandwidth=4))
+
+print(res_h3.summary)
+
+
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+
+# --- helper to fetch confidence intervals safely ------------------
+def coef_ci_frame(res, cols):
+    ci = res.conf_int().loc[cols]
+    df = pd.DataFrame({
+        'coef': res.params[cols],
+        'ci_low': ci.iloc[:, 0],
+        'ci_high': ci.iloc[:, 1]
+    })
+    df = df.reset_index().rename(columns={'index': 'var'})
+    return df
+
+# 1) Série temporelle – indice de santé bancaire et surprise
+# First graph: Bank-health z-score
+sys_bh['date'] = pd.to_datetime(sys_bh['date'])
+
+# First graph: Bank-health z-score over time (scatter plot)
+fig1, ax1 = plt.subplots()
+ax1.scatter(sys_bh['date'], sys_bh['bank_health'], marker='o', label='Bank-health z-score')
+ax1.set_xlabel("Date")
+ax1.set_ylabel("Bank-health z-score")
+ax1.set_title("Bank-health z-score Over Time")
+ax1.legend()
+plt.tight_layout()
+plt.show()
+
+# Second graph: Δ Bank-health over time (scatter plot)
+fig2, ax2 = plt.subplots()
+ax2.scatter(sys_bh['date'], sys_bh['d_bh'], label='Δ Bank-health')
+ax2.set_xlabel("Date")
+ax2.set_ylabel("Δ Bank-health")
+ax2.set_title("Δ Bank-health Over Time")
+ax2.legend()
+plt.tight_layout()
+plt.show()
+
+# 2) Coefficients du modèle H1 (effet moyen)
+cols_h1 = ['d_bh_lag1', 'Mkt-RF', 'SMB', 'HML', 'MOM', 'size_lag']
+h1_df = coef_ci_frame(res1, cols_h1)
+
+fig2, ax = plt.subplots()
+ax.errorbar(h1_df['var'], h1_df['coef'],
+            yerr=[h1_df['coef'] - h1_df['ci_low'],
+                  h1_df['ci_high'] - h1_df['coef']],
+            fmt='o', capsize=4)
+ax.set_xticklabels(h1_df['var'], rotation=45, ha='right')
+ax.set_title("Modèle H1 – coefficients et IC 95 %")
+ax.set_ylabel("β")
+plt.tight_layout()
+plt.show()
+
+# 3) Coefficients sectoriels (H2)
+cols_sec = [c for c in res3.params.index if c.startswith('d_bh_sec')]
+sec_df = coef_ci_frame(res3, cols_sec)
+
+fig3, ax = plt.subplots()
+ax.errorbar(sec_df['var'], sec_df['coef'],
+            yerr=[sec_df['coef'] - sec_df['ci_low'],
+                  sec_df['ci_high'] - sec_df['coef']],
+            fmt='o', capsize=4)
+ax.set_xticklabels(sec_df['var'], rotation=45, ha='right')
+ax.axhline(0)
+ax.set_title("Sensibilité au choc bancaire par secteur (IC 95 %)")
+ax.set_ylabel("Δβ secteur vs réf")
+plt.tight_layout()
+plt.show()
+
+# 4) Profil de sensibilité par décile de taille
+base['decile'] = pd.qcut(base['size_lag'], 10, labels=False) + 1
+betas = []
+for d, sub in base.groupby('decile'):
+    y = sub['rx_q']
+    X = sm.add_constant(sub['d_bh_lag1'])
+    b = sm.OLS(y, X).fit()
+    betas.append(b.params['d_bh_lag1'])
+
+fig4, ax = plt.subplots()
+ax.plot(range(1, 11), betas, marker='o')
+ax.set_xlabel("Décile de taille (1 = plus petit)")
+ax.set_ylabel("β(d_bh_lag1) non‑FE")
+ax.set_title("Profil de sensibilité par décile de taille")
+plt.tight_layout()
+plt.show()
